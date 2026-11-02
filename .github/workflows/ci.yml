@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [., examples/minimal, examples/complete]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.5'
+          terraform_wrapper: false
+      - name: Format
+        if: matrix.dir == '.'
+        run: terraform fmt -recursive -check -diff
+      - name: Validate
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.53.0
+      - name: Lint
+        working-directory: ${{ matrix.dir }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --config "$GITHUB_WORKSPACE/.tflint.hcl" --format compact
