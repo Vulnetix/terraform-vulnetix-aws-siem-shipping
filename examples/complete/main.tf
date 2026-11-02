@@ -1,13 +1,7 @@
-# Every input: flow logs and DNS query logs for two VPCs, CloudTrail, a
-# longer error retention and tags, with the token from a secret store. From
-# the registry, use source = "Vulnetix/aws-siem-shipping/vulnetix" with a
-# version.
-
-variable "guardian_ingest_token_secret_id" {
-  description = "The Secrets Manager secret holding the Guardian ingest token."
-  type        = string
-  default     = "vulnetix/guardian-ingest-token"
-}
+# Every input: flow logs and DNS query logs for the production VPCs,
+# CloudTrail, a longer error retention and tags, with the token read from
+# Secrets Manager. From the registry, use
+# source = "Vulnetix/aws-siem-shipping/vulnetix" with a version.
 
 provider "aws" {
   region = "eu-west-1"
@@ -41,29 +35,4 @@ module "vulnetix_siem" {
     Owner       = "security-platform"
     Environment = "production"
   }
-}
-
-output "stream_arns" {
-  description = "The Firehose streams delivering to Guardian, by kind."
-  value       = module.vulnetix_siem.stream_arns
-}
-
-output "error_bucket" {
-  description = "Where refused batches land."
-  value       = module.vulnetix_siem.error_bucket
-}
-
-output "flow_log_ids" {
-  description = "One flow log per VPC."
-  value       = module.vulnetix_siem.flow_log_ids
-}
-
-output "resolver_query_log_config_id" {
-  description = "The DNS query logging config."
-  value       = module.vulnetix_siem.resolver_query_log_config_id
-}
-
-output "cloudtrail_rule_arn" {
-  description = "The EventBridge rule sending CloudTrail events."
-  value       = module.vulnetix_siem.cloudtrail_rule_arn
 }
