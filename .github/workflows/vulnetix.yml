@@ -1,0 +1,171 @@
+# Managed by `vulnetix gha init`. Edit .vulnetix/workflow.yaml and re-run it.
+name: Vulnetix Security
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secrets
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    permissions:
+      contents: read
+      security-events: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Vulnetix/cli/secrets@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          extra-args: |
+            --ignore-binaries
+            --ignore-git
+          artifact-name: secrets
+          fail-on-findings: false
+          rules: |
+            Vulnetix/community-rules
+            Vulnetix/opa-fugue-regula
+            Vulnetix/opa-checkmarx-kics
+            Vulnetix/opa-cds-aws-tf
+            Vulnetix/opa-cigna-tf
+            Vulnetix/opa-aquasecurity-trivy
+          github-code-scanning: ${{ github.event_name == 'push' }}
+
+  iac:
+    name: IaC
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    permissions:
+      contents: read
+      security-events: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Vulnetix/cli/iac@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          artifact-name: iac
+          fail-on-findings: false
+          rules: |
+            Vulnetix/community-rules
+            Vulnetix/opa-fugue-regula
+            Vulnetix/opa-checkmarx-kics
+            Vulnetix/opa-cds-aws-tf
+            Vulnetix/opa-cigna-tf
+            Vulnetix/opa-aquasecurity-trivy
+            Vulnetix/opa-snyk-labs-iac
+          github-code-scanning: ${{ github.event_name == 'push' }}
+
+  license:
+    name: License
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    permissions:
+      contents: read
+      security-events: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Vulnetix/cli/license@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          artifact-name: license
+          fail-on-findings: false
+          github-code-scanning: ${{ github.event_name == 'push' }}
+
+  cbom:
+    name: CBOM
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Vulnetix/cli/cbom@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          artifact-name: cbom
+          fail-on-findings: false
+
+  aibom:
+    name: AIBOM
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Vulnetix/cli/aibom@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          artifact-name: aibom
+          fail-on-findings: false
+          extra-args: |
+            --commit-scan-max
+            1
+
+  analyze:
+    name: Analyze
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: Vulnetix/cli/analyze@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          artifact-name: analyze
+          fail-on-findings: false
+
+  publish:
+    name: Publish
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    if: ${{ !cancelled() }}
+    needs: [secrets, iac, license, cbom, aibom, analyze]
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Vulnetix/cli/gha-upload@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          fail-on-findings: false
+
+  tea:
+    name: TEA
+    runs-on: [self-hosted, Linux, X64, vulnetix-local]
+    if: ${{ !cancelled() }}
+    needs: [cbom, aibom]
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8.0.2
+        continue-on-error: true
+        with:
+          pattern: '{sca,cbom,aibom}'
+          merge-multiple: true
+          path: boms
+      - uses: Vulnetix/cli/tea-release@v4.23.0
+        with:
+          org-id: ${{ secrets.VULNETIX_ORG_ID }}
+          api-key: ${{ secrets.VULNETIX_API_KEY }}
+          tea-files: boms/*.cdx.json
+          tea-auto-version: true
+          tea-checksums-from-release: true
+          fail-on-findings: false
